@@ -160,7 +160,10 @@ function syncCordisPatch(profile, options) {
       `${stamps || 'preset'} place(s)`,
   )
   if (!options.dryRun) {
-    const backup = `${file}.bak-dsh-ctx-${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15)}`
+    // 备份名用纯数字时间戳：`toISOString()` 里的 '.' 若被留下，文件名会以点结尾，
+    // Windows 上这类文件无法用常规路径访问（只能 \\?\ 前缀），回滚时会很别扭。
+    const stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)
+    const backup = `${file}.bak-dsh-ctx-${stamp}`
     if (!options.uninstall) write(backup, before)
     write(file, after)
     say(`  backup written: ${backup}`)
