@@ -166,6 +166,15 @@ export function cascadeText() {
   return lines.join('\n');
 }
 
+/** 240 条 postgres URL（F1 预算轴样本，约 22.4KB）。 */
+export function urls240() {
+  return Array.from(
+    { length: 240 },
+    (_, i) =>
+      `DATABASE_REPLICA_${pad(i, 3)}_URL=postgresql://ops_user:secret@db-replica-${pad(i % 12, 2)}.internal:5432/ledger_main`,
+  ).join('\n');
+}
+
 /** 400 行日志里埋 8 条「不同 step」的真错误（同签名红线用例）。 */
 export function eightDistinctErrors() {
   const lines = logLines(400).split('\n');
@@ -232,18 +241,8 @@ export function goldenCases() {
   add('cascade-621', 'Bash', cascadeText());
   add('eight-distinct-errors', 'Bash', eightDistinctErrors());
   add('kv-200-budget-8000', 'Bash', Array.from({ length: 200 }, (_, i) => `ENVKEY_${pad(i, 3)}=some_demo_value_${pad(i, 3)}_padding_xx`).join('\n'), { WB_OPS_BUDGET: '8000' });
-  add(
-    'urls-240-budget-20000',
-    'Bash',
-    Array.from({ length: 240 }, (_, i) => `DATABASE_REPLICA_${pad(i, 3)}_URL=postgresql://ops_user:secret@db-replica-${pad(i % 12, 2)}.internal:5432/ledger_main`).join('\n'),
-    { WB_OPS_BUDGET: '20000' },
-  );
-  add(
-    'urls-240-budget-24000',
-    'Bash',
-    Array.from({ length: 240 }, (_, i) => `DATABASE_REPLICA_${pad(i, 3)}_URL=postgresql://ops_user:secret@db-replica-${pad(i % 12, 2)}.internal:5432/ledger_main`).join('\n'),
-    { WB_OPS_BUDGET: '24000' },
-  );
+  add('urls-240-budget-20000', 'Bash', urls240(), { WB_OPS_BUDGET: '20000' });
+  add('urls-240-budget-24000', 'Bash', urls240(), { WB_OPS_BUDGET: '24000' });
   add('read-default-off', 'Read', codeLines(900));
   add('read-trim-on', 'Read', codeLines(900), { WB_OPS_READ_TRIM: '1' });
   add('crlf-400', 'Bash', Array.from({ length: 400 }, (_, i) => `line ${i}: some content here for padding`).join('\r\n'));

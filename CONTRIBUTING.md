@@ -47,13 +47,18 @@ CI 不需要 Python —— golden 夹具已经提交在仓库里。
 算法是从 1.x 的 Python 参考实现逐条移植来的，开发期靠**差分对拍**保证行为一致：
 
 ```bash
-node scripts/differential.mjs --random 200
+node scripts/differential.mjs              # 固定语料 + 220 组随机载荷
+node scripts/differential.mjs --count 300  # 更多随机载荷
+node scripts/differential.mjs --seed 7     # 换随机种子
 ```
 
-- 需要本机有 Python 参考实现（开发期材料，**不随仓库发布**，由维护者提供路径）；
-- 脚本对随机载荷分别跑 JS 引擎与参考实现，逐字节比较结果，打印差异摘要；
+- 需要本机有 Python 参考实现（开发期材料，**不随仓库发布**）：默认路径在仓库外，
+  可用 `--python` / `--reference` 或环境变量 `PARITY_PYTHON` / `PARITY_REFERENCE` 指定；
+- 脚本对随机载荷分别跑 JS 引擎与参考实现，逐字节比较**文本、reason、meta**，打印差异摘要；
 - **退出码非 0 = 有不一致**，先修到 0 差异再提 PR；
-- 对拍时落盘关闭（`spillEnabled` / Python 侧 `WB_OPS_SPILL=0`），避免临时文件干扰比较。
+- 对拍时落盘关闭（`spillEnabled` / Python 侧 `WB_OPS_SPILL=0`），避免临时文件干扰比较；
+- 改了引擎且行为是**有意变化**时，用 `--update-golden` 重新生成
+  `tests/engine/fixtures/golden.json`，并在 PR 里说明为什么变。
 
 落盘本身（内容寻址文件名、7 天清理）另有单测覆盖，不靠对拍。
 
@@ -89,8 +94,8 @@ node scripts/differential.mjs --random 200
 
 ```bash
 node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"  # 清单合法
-node --test tests/                         # 全绿
-node scripts/differential.mjs --random 200 # 改过引擎才需要，要求 0 差异
+node --test tests/                          # 全绿
+node scripts/differential.mjs --count 200   # 改过引擎才需要，要求 0 差异
 ```
 
 - 改判定逻辑 = 同时更新 `docs/ENGINE-SPEC.md` 对应小节；

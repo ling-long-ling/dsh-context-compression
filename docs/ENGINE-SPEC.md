@@ -575,8 +575,12 @@ shadow 模式下只统计不写会话、按 replay-safe 协议先 append `compac
 ```bash
 node --test tests/                # 全部测试（引擎 golden + 服务契约 + 真加载）
 node --test tests/engine/         # 只跑引擎单测与夹具
-node scripts/differential.mjs --random 200   # 开发期 JS↔Python 差分对拍（需本机 Python 参考实现）
+node scripts/differential.mjs --count 200    # 开发期 JS↔Python 差分对拍（需本机 Python 参考实现）
 ```
 
-差分对拍要求：随机 ≥ 200 组载荷、落盘关闭时，与参考实现输出**逐字节一致**；
-任何判定逻辑改动都要重跑。
+差分对拍要求：随机 ≥ 200 组载荷、落盘关闭时，与参考实现输出**逐字节一致**（文本、reason、meta 三项都比）；
+任何判定逻辑改动都要重跑。`--help` 可看全部参数（`--count` / `--seed` / `--python` / `--reference` /
+`--fixed-only` / `--update-golden`）。
+
+> 2026-11-03 的移植验收实测：`--count 200` 共 **245 组**（固定 35 + 随机 210，seed=20251103），
+> **0 组差异**。

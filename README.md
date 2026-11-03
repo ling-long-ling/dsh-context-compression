@@ -160,7 +160,8 @@ pytest 失败、npm 安装、docker ps、K8s ConfigMap、`.env`、50 KB 单行 J
 
 > ⚠️ 这组数字来自 **WorkBuddy hook 时代同算法引擎的独立语料**（1.x 的 Python 参考实现），
 > 不是 2.0 JS 引擎重新跑出来的；2.0 逐条移植同一套算法，并用开发期差分对拍
-> （`scripts/differential.mjs`，与 Python 参考实现逐字节比对）保证行为一致。
+> （`scripts/differential.mjs`，与 Python 参考实现逐字节比对）保证行为一致：
+> 2026-11-03 实测 **245 组载荷（固定 35 + 随机 210）0 差异**（文本 / reason / meta 三项全比）。
 > 这组数字与仓库自带测试夹具**不是同一批输入**，不要混着加总。
 
 ## 2.0 变更
@@ -182,7 +183,7 @@ pytest 失败、npm 安装、docker ps、K8s ConfigMap、`.env`、50 KB 单行 J
 ```bash
 node --test tests/                 # 全部测试（引擎 golden + 服务契约 + 真加载冒烟）
 node --test tests/engine/          # 只跑引擎
-node scripts/differential.mjs --random 200   # 开发期与 Python 参考实现差分对拍
+node scripts/differential.mjs --count 200    # 开发期与 Python 参考实现差分对拍
 ```
 
 写法、作用域与禁止事项见 [CONTRIBUTING.md](CONTRIBUTING.md)；算法契约见

@@ -650,4 +650,9 @@ function main() {
   return failure;
 }
 
-process.exitCode = main();
+try {
+  process.exitCode = main();
+} catch (error) {
+  console.error(`✗ 对拍无法进行：${error?.message ?? error}`);
+  process.exitCode = 2;
+}
