@@ -1,0 +1,37 @@
+{
+  "name": "dsh-context-compression",
+  "version": "2.0.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "test:watch": "node --test --watch"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0",
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "description": "DSH 工具结果分层压缩插件：STRONG/SKELETON/WEAK 分层保留，接入 compaction 管线。",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "context",
+    "compaction",
+    "token"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ling-long-ling/dsh-context-compression.git"
+  }
+}

@@ -1,0 +1,18 @@
+# 统一换行符：源码一律 LF 入库、检出也保持 LF。
+# 这个库做逐字节比较（golden fixture / differential），换行符不一致会直接判失败。
+* text=auto eol=lf
+
+# 文本
+*.md   text eol=lf
+*.js   text eol=lf
+*.mjs  text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.sh   text eol=lf
+
+# 二进制
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary
+*.tgz binary
