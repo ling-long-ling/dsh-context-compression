@@ -6,6 +6,135 @@
 > 2.0.0 是**插件形态的重构**：同一套裁剪算法，从 hook 插件改造成 DSH Cordis 插件。
 > 下面 1.x 的段落全部属于 **WorkBuddy / CodeBuddy 时代**，保留原样以便对照历史行为。
 
+## [2.1.0] - 2026-11-04
+
+基于 2026-11-04 的 v2.0 实测优化报告（问题清单 P1-1…P1-8 / P2-1…P2-10，建议 R1~R10）。
+算法骨架不变（STRONG / SKELETON / WEAK 分层、预算分层、原文落盘），改的是**默认配置、触发语义、
+分类谓词与可观测性**；有破坏性的默认值变更，见「变更」。
+
+### 修复
+
+**Read 覆盖（R2 / P1-1 / P1-2）**
+
+- `readTrim` 默认 `false` → `true`：真实历史里 1,014 条 `Read` 结果（5.36 MB，占工具输出字节
+  30.5%）从「一条都不裁」变成参与裁剪。
+- Read 触发由「文件 > 1500 行」改为「文本字节数 > 预算」；`READ_MIN_LINES` 归零（常量保留但
+  不再参与判定）。旧门槛在真实数据上是死开关：1,014 条 Read 结果没有一条到 1500 行。
+- Read 模式不再只认函数/类/import：STRONG 错误行同样保留。**收口后改为错误行优先**——
+  分类档位 4 = 真错误 / 3 = 符号行，错误行先占 45% 预算，符号行只能用累计 57% 的剩余额度
+  （新增常量 `READ_SYMBOL_MIN_LINES = 64` 作符号行条数基线下限）。复核实测
+  （150 符号行 + 30 错误行的 Read 结果）：错误行 18/30 → **30/30**，符号行 93/150 → **131/150**。
+- Read 标记同时报「N 条符号行、M 条错误行」（旧版日志里的 `ERROR`/`Traceback` 行整段丢失且无提示）。
+  两数只统计关键行区：`M = meta.k`，`N` 只数 tier 3（不含 `focusPatterns` 命中的 tier 2 行）。
+
+**触发（R3 / P1-3）**
+
+- `trimText` 入口改为「输入字节数 ≤ 预算一律不裁」（`reason: 'short'`）。旧版在
+  `(minBytes, budget]` 区间会触发一次目标仍是同一预算的「白裁」，真实数据 153 条
+  （134 Bash + 17 WebFetch + 2 Grep），其中 1 条丢了 STRONG 行。
+- `DEFAULT_MIN_BYTES` 与 `DEFAULT_BUDGETS` 对齐（bash 4000 / 其余 8000）；
+  `resolveConfig` 把任何低于对应预算的 `minBytes` 抬到预算。v2.1 引擎不再读取 `minBytes`，
+  行数触发（`MAX_LINES = 120`）失效。
+
+**落盘（R4 / P1-4 / P2-4）**
+
+- 没有识别出关键行时也落盘，标记里给出「原文 …，可 Grep 回查」路径（旧版 netstat 类场景
+  被省的 443 行永久丢失）。
+- `finish` 判定退化（不比原文小 / 超预算 / 节省不足）时删除已写的落盘文件，不留无引用垃圾。
+- 少行分支「省略 N 字节」改为按标记实长固定点求解（最多 4 次迭代），并扣掉
+  `json_safe_prefix` 插入的截断标注，不再硬切失真（P1-7）。
+
+**标记与行号（R5 / P1-8 / P2-1 / P2-9）**
+
+- 末尾换行不再产生空行：200 行、以 `\n` 结尾的日志，尾标记是「第 176–200 行」而非 177–201（P1-8）。
+- 行号区间可带「，该区间内另有 N 行已保留在上/下文」，不再让模型按 `a..b` 推断整段被删（P2-1）。
+- 按输入主导行尾输出（多数行 CRLF 则标记行也用 CRLF），不再 CRLF/LF 混排（P2-9）。
+- 组装预算改为 `预算 - (MARKER_RESERVE 480 + 落盘路径实长 + 64)`（下限 500），正常路径不再
+  触发整段硬切；`finish` 超预算时退化成「不裁」而不是切出与标记矛盾的文本。
+
+**分类器（R1 / P1-5 / P2-6 / P2-8）**
+
+- 新增小写/混合大小写 `key: value`（k8s manifest、CI workflow、docker-compose、frontmatter；
+  键 `[a-z0-9_.-]`，值非空且不以 `/` 开头，去行首空白后 ≤ 200 字节）——真实数据里最大的一类漏检（1,562 行）。
+- 新增 `path:line` / `path:line:col`（31 行）、MAC 地址（7 行）、`host:port`（含 IPv6
+  `[::1]:8080`，排除时间戳）、diff 的 `+`/`-` 骨架行（7 行）、现代 npm 的小写 `npm error`。
+- 自定义异常类名（`AssertionError:` / `FooException:`：`Error:`/`Exception:` 左侧 token 以大写
+  开头）算 STRONG（3 行 pytest/Java/Rust 根因行）；`isError:` / `errorCode:` 这类配置键不算。
+- 分类前先剥 ANSI CSI 序列，彩色 CI 日志（`\x1b[31mERROR`）不再漏检（P2-8）。
+- `MAX_SKEL_LINES` 24 → 40，避免 YAML/KV 类把别的关键值挤掉。
+- `Exit Code:` 只认行首形态：输出里引用了 `Exit Code: 1`（文档、被回显的脚本）不再让整段透传（P2-6）。
+
+**其它判定与协议（P2-7 / P2-2 / R6）**
+
+- `<persisted-output` 只认行首形态（前 4000 字节窗口内、且位于行首或全文开头），读到插件源码/文档
+  时的「该裁不裁」消失（P2-7）。
+- `dedupStrong` 超上限裁剪改为「先保留各签名组首条（根因），剩余名额等距取样」；
+  不再保留最早的那一批（R6）。
+- 孤立代理项归一化改为字符串层替换（3 个 U+FFFD，语义等价）；`bytesBefore` 改取**原始输入**字节数，
+  不再因归一化虚高最多 3 倍（P2-2）。
+- 普通/Read 模式的 strong 候选不再排除尾段区间（`strong_cand = strong_all`）：落在最后 25 行里的
+  错误行照常参与关键行挑选，尾段填充用 `taken` 去重；旧版 `i < tail_lo` 会让它们只剩尾段填充一条路，
+  尾段预算不够就整条丢掉。
+- 尾段保底：落盘目录很长 / 预算很小导致尾段连一行都放不下时，从已填头段尾部回收空间，
+  保证「原文最后一行」完整可见，尾标记行号与实际一致（P1-7 第二形态）。
+
+### 新增
+
+- 配置项 `focusPatterns: string[]`（≤ 32 条、每条 ≤ 128 字符）：命中的行按关键行（tier 2）保留，
+  Read 模式也生效（R6）。
+- 布尔配置强类型校验：`enabled` / `readTrim` / `shadow` / `debug` / `spill.enabled` 传 `"true"`
+  这类字符串会直接抛错（此前静默退化成关闭）；`focusPatterns` 同样校验类型、条数、长度（P2-3）。
+- 可观测性（R8）：启动写 `statsDir/last-boot.json`（版本 + 加载后解析出的完整配置）；
+  每趟 `pruneSession` 结束写 `last-pass.json`（候选数 / 裁剪数 / 省字节，0 裁剪也写）；
+  决策记录改为每趟批量追加 `saves-YYYY-MM.jsonl`（`FLUSH_EVERY = 512` 或每趟结束 flush），
+  不再每个候选一次 `fs` 写。
+- 性能：输入行数 > `MAX_CLASSIFY_LINES (20000)` 时，头段 + 尾段之外的中段按
+  `SAMPLE_CLASSIFY_CAP (12000)` 等距抽样分类；此模式 `meta.w = -1` 表示弱关键词计数未知（R9）。
+- `pruneSession` 返回 `{ pruned, bytesRemoved, charsRemoved }`，`pruned` 条目补
+  `charsBefore` / `charsAfter`，与官方裁剪器返回结构对齐（R7）。
+- 多个 text block（stdout/stderr 分块）按块裁剪并原位重建，块数与顺序保留；分块时每块预算
+  按字节占比分摊（下限 2000）（R7）。
+- Read 模式仍不落盘（源码可用 offset 重读），标记不带原文路径；普通模式则无论有没有关键行都落盘
+  （后者是 2.1 新增，前者沿用旧行为并在文档里写明）。
+- `tool/result` 追加失败时中止本趟遍历并记 `aborted`（旧版会继续给后续候选堆悬空 shadow）（R7）。
+
+### 变更（破坏性：默认值与触发语义）
+
+- **`readTrim` 默认值 `false` → `true`**：升级后 Read 结果会开始被裁剪；要保持 2.0 行为请显式
+  写 `readTrim: false`。
+- **默认落盘/统计目录迁移**：`os.tmpdir()` → `~/.dsh/context-compression/{data,spill}`
+  （Windows 上 DSH 重启会换 `%TEMP%`，旧默认让落盘原文与统计随重启消失，也是 2.0
+  「日志说 active、却查不到证据」的原因之一）。旧目录文件不会自动迁移。
+- **触发语义**：只由「输入字节数 > 该工具预算」触发；`minBytes` 保留但不再影响行为，
+  行数触发（120 行）失效。因此「行多但总量小」的输出（如 200 行 × 10 字节）不再被裁。
+- **默认 `minBytes` 表与预算对齐**：bash 3000→4000、grep/glob/webFetch 6000→8000、
+  default 4000→8000、read 8000 不变。
+- **Read 触发门槛**：1500 行 → 按字节预算（`READ_MIN_LINES = 0`）。
+- **Read 模式的 `meta` 语义**：`meta.k` 只数保留的**错误行**，符号行（及 `focusPatterns` 命中的行）
+  计入 `meta.g`；普通模式 k/g 语义不变。两数都只统计关键行区，头段/尾段顺带显示的行不计入。
+- **`MAX_LINES` 常量废弃**：v2.1 行数触发已取消，`constants.js` 仍导出它只为兼容旧调用方，
+  引擎不再消费；`READ_MIN_LINES` 同理（保留导出，不参与判定）。
+- **标记文案**：区间可带「该区间内另有 N 行已保留在上/下文」；无关键行时也带落盘路径；
+  Read 标记报符号行 + 错误行两类计数；`meta.w = -1` 表示抽样模式下未知。
+- **测试基线**：golden 夹具改为**自观测回归基线**（`scripts/update-golden.mjs` 用当前引擎生成
+  `tests/engine/fixtures/golden.json`），不再要求与 Python 参考实现逐字节一致；
+  `scripts/differential.mjs` 保留为历史工具，不再作为验收门槛。
+
+### 性能
+
+- 孤立代理项：10 MB 输入峰值 RSS 从约 5 倍（610 MB）降到约 1 倍（干净输入 135 MB）——
+  不再构造千万级整数数组（P1-6 / R9）。
+- > 20000 行密集输入：中段抽样分类，把「每行都跑一遍分类器」的同步阻塞压到有界
+  （10 MB / 52 万行场景原为 ~6 s 量级，P1-6）。
+- 决策记录批量写盘：一趟 compaction 只 flush 一次，不再每个候选一次 `appendFile`。
+
+### 兼容性
+
+- 包版本 / 诊断版本：`2.1.0`（`ENGINE_VERSION`、`PLUGIN_VERSION`、`last-boot.json` 一致）。
+- 配置键只增不减：旧 `minBytes` 仍接受（抬到 ≥ 预算后记录进 `last-boot.json`，不参与判定）。
+- 服务契约向后兼容：`pruneSession` 只新增返回字段，未删改已有字段；`compaction/prune` +
+  `surfaceOp: replace` 写回协议不变。
+
 ## [2.0.0] - 2026-11-03
 
 ### 版本号为什么是 2.0.0

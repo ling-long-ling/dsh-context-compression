@@ -244,10 +244,16 @@ function main() {
   if (options.uninstall) {
     say('Done. Restart DSH (or let the profile patch reloader pick it up) to drop the plugin.')
   } else {
+    const version = JSON.parse(fs.readFileSync(path.join(options.repo, 'package.json'), 'utf8')).version
     say('Done. Restart DSH to load the plugin, then verify:')
-    say('  1. DSH logs contain "dsh-context-compression 2.0.0 active"')
+    say(`  1. DSH logs contain "dsh-context-compression ${version} active"`)
     say('  2. a long tool output is replaced by a "… [dsh-ctx 省略 N 行 …] …" marker')
-    say('  3. diagnostics: %TEMP%\\dsh-context-compression\\data\\last-trim.json')
+    say('  3. statsDir files answer "did it really load / really trim?":')
+    say('       last-boot.json  首次加载时写入（版本 + 解析后的配置）')
+    say('       last-pass.json  每一趟 compaction 后写入（候选/裁剪/省字节，0 裁剪也写）')
+    say('       last-trim.json  最近一次单条决策')
+    say('       saves-*.jsonl   逐条流水')
+    say('     v2.1 起默认在 ~/.dsh/context-compression/data（不再放在 %TEMP%，DSH 重启会换 TEMP）')
   }
 }
 

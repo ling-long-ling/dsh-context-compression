@@ -147,3 +147,66 @@ test('落盘 fail-soft：spillDays 非法时按 7 天处理', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/** 递归列出目录下的普通文件（目录本身不算孤儿文件）。 */
+function filesUnder(dir) {
+  return fs
+    .readdirSync(dir, { recursive: true })
+    .map((entry) => path.join(dir, String(entry)))
+    .filter((filePath) => {
+      try {
+        return fs.statSync(filePath).isFile();
+      } catch {
+        return false;
+      }
+    });
+}
+
+test('v2.1 R4：没有关键行也落盘，标记带原文路径', () => {
+  const dir = tempDir();
+  try {
+    // 普通 prose：既没有 STRONG 也没有 SKELETON → keyPicked 为空
+    const text = Array.from(
+      { length: 400 },
+      (_, i) => `plain prose line ${i}: the rollout proceeds in waves across zones`,
+    ).join('\n');
+    const result = engineWithSpill(text, dir);
+    assert.equal(result.reason, 'trim');
+    assert.equal(result.meta.k, 0);
+    assert.equal(result.meta.g, 0);
+    assert.equal(result.meta.p, 1, '无关键行也要落盘');
+    assert.ok(result.text.includes('\u672a\u53d1\u73b0\u9519\u8bef/\u5173\u952e\u503c\u884c'), 'plainMarker 文案');
+    const match = result.text.match(/\u539f\u6587 (.*?)\uff0c\u53ef Grep \u56de\u67e5/);
+    assert.ok(match, result.text.slice(0, 200));
+    assert.ok(fs.existsSync(match[1]), match[1]);
+    assert.deepEqual(fs.readFileSync(match[1]), Buffer.from(text, 'utf8'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('v2.1 P2-4：finish 判定退化时删除已落盘的原文（不留孤儿文件）', () => {
+  const dir = tempDir();
+  try {
+    // 节省量达不到 minSaveBytes → finish 返回 null，但原文此前已经落盘
+    const text = logLines(300, { errs: 4 });
+    const normal = engineWithSpill(text, dir);
+    assert.equal(normal.reason, 'trim');
+    assert.ok(filesUnder(dir).length > 0, '正常路径应有落盘文件');
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+
+    const noGain = engineWithSpill(text, dir, { minSaveBytes: 1e9 });
+    assert.equal(noGain.reason, 'short');
+    assert.equal(noGain.text, null);
+    assert.deepEqual(filesUnder(dir), [], '退化的原文必须删除');
+
+    // 少行分支的退化同样要删（v2.1 两处 finish 调用都做了清理）
+    const shortNoGain = engineWithSpill('z'.repeat(6000), dir, { minSaveBytes: 1e9 });
+    assert.equal(shortNoGain.reason, 'short');
+    assert.deepEqual(filesUnder(dir), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+

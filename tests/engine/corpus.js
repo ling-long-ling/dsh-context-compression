@@ -2,11 +2,17 @@
  * 确定性语料（golden 回归 + 开发期差分对拍共用）。
  *
  * 只用字符串拼接与整数运算生成内容，保证任何机器、任何 Node 版本上
- * 得到逐字节一致的输入；golden 夹具只存「Python 参考实现生成的期望输出」，
- * 输入由本模块按用例名重建，因此仓库里不需要塞几十 KB 的原文。
+ * 得到逐字节一致的输入；golden 夹具只存期望输出，输入由本模块按用例名重建，
+ * 因此仓库里不需要塞几十 KB 的原文。
  *
- * 注意：2.0 的标记前缀是 `… [dsh-ctx `；差分脚本会在喂给 Python 参考实现前
- * 把新品牌替换成旧的 `… [wb-ops `，再把期望输出换回新品牌（见 differential.mjs）。
+ * v2.1：`tests/engine/fixtures/golden.json` 改由 `scripts/update-golden.mjs`
+ * 用当前 JS 引擎自观测生成（不再是 Python 参考实现的对拍基线）。`env` 里的
+ * `WB_OPS_*` 键保留为「用例覆盖项」的稳定写法，update-golden 会把它翻译成
+ * lib/config.js 的配置再解析成引擎 options。
+ *
+ * 注意：2.0 的标记前缀是 `… [dsh-ctx `；legacy 差分脚本会在喂给 Python 参考
+ * 实现前把新品牌替换成旧的 `… [wb-ops `，再把期望输出换回新品牌（见
+ * differential.mjs，仅作历史对照保留）。
  */
 
 function pad(n, width) {
@@ -243,7 +249,7 @@ export function goldenCases() {
   add('kv-200-budget-8000', 'Bash', Array.from({ length: 200 }, (_, i) => `ENVKEY_${pad(i, 3)}=some_demo_value_${pad(i, 3)}_padding_xx`).join('\n'), { WB_OPS_BUDGET: '8000' });
   add('urls-240-budget-20000', 'Bash', urls240(), { WB_OPS_BUDGET: '20000' });
   add('urls-240-budget-24000', 'Bash', urls240(), { WB_OPS_BUDGET: '24000' });
-  add('read-default-off', 'Read', codeLines(900));
+  add('read-default-on', 'Read', codeLines(900)); // v2.1: readTrim 默认 true
   add('read-trim-on', 'Read', codeLines(900), { WB_OPS_READ_TRIM: '1' });
   add('crlf-400', 'Bash', Array.from({ length: 400 }, (_, i) => `line ${i}: some content here for padding`).join('\r\n'));
   add('bare-marker-substring', 'Bash', bareMarkerText());

@@ -79,7 +79,7 @@ test('loads inside a real Cordis context', { skip: appDir === null }, async () =
   const service = ctx.get('toolResultPruner')
   assert.equal(service.name, 'toolResultPruner')
   assert.equal(typeof service.pruneSession, 'function')
-  assert.equal(service.version, '2.0.0')
+  assert.equal(service.version, '2.1.0')
 
   // Disposal must unregister the service; the compaction engine then falls back
   // to "no pruner" rather than holding a dead reference.
@@ -105,7 +105,7 @@ test('the pruner service is isolated per compaction realm', { skip: appDir === n
   const ready = await waitFor(() => realms.every(({ realm }) => realm.get('toolResultPruner', false) !== undefined))
   assert.ok(ready, 'isolated realms did not each register their own pruner')
   for (const { realm } of realms) {
-    assert.equal(realm.get('toolResultPruner').version, '2.0.0')
+    assert.equal(realm.get('toolResultPruner').version, '2.1.0')
   }
   assert.equal(root.get('toolResultPruner', false), undefined, 'isolated service leaked to the root')
 })

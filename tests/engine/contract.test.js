@@ -1,15 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 import { ENGINE_VERSION, trimToolText } from '../../lib/engine/index.js';
+import {
+  MAX_CLASSIFY_LINES,
+  MAX_SKEL_LINES,
+  READ_MIN_LINES,
+  READ_SYMBOL_MIN_LINES,
+} from '../../lib/engine/constants.js';
 import { hasTrimMarker, MARKER_NEEDLE } from '../../lib/engine/marker.js';
 import { callEngine } from './helpers.js';
 import { logLines } from './corpus.js';
 
 const NOOP_FIELDS = ['reason', 'text', 'meta', 'bytesBefore', 'bytesAfter'];
 
-test('ENGINE_VERSION 与包版本一致', () => {
-  assert.equal(ENGINE_VERSION, '2.0.0');
+/** package.json 版本（ENGINE_VERSION 必须与它一致）。 */
+const PKG_VERSION = JSON.parse(
+  fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+).version;
+
+test('ENGINE_VERSION 与包版本一致（v2.1）', () => {
+  assert.equal(ENGINE_VERSION, '2.1.0');
+  assert.equal(ENGINE_VERSION, PKG_VERSION);
+});
+
+test('v2.1 常量：Read 行数门槛取消、符号行基线下限 64、骨架上限 40、大规模分类门槛 20000', () => {
+  assert.equal(READ_MIN_LINES, 0, 'Read 触发改由字节预算决定');
+  assert.equal(READ_SYMBOL_MIN_LINES, 64, 'Read 符号行条数基线下限（错误行先占位后仍要留骨架）');
+  assert.equal(MAX_SKEL_LINES, 40, 'v2.1: 24 → 40');
+  assert.equal(MAX_CLASSIFY_LINES, 20000);
 });
 
 test('返回形状：不裁剪时 text=null、bytesAfter=bytesBefore、meta 全 0', () => {
@@ -39,14 +59,29 @@ test('非法输入（text 不是字符串）返回 reason=error 的对象而不�
   }
 });
 
-test('P1-3：前 4000 字节出现 <persisted-output> 时透传', () => {
+test('v2.1 触发：输入 ≤ 预算一律 short（R3，消灭白裁窗口）', () => {
+  // 预算边界：正好 4000 字节也算「已在预算内」
+  assert.equal(callEngine('x'.repeat(4000), 'Bash').reason, 'short');
+  assert.equal(callEngine('x'.repeat(3999), 'Bash').reason, 'short');
+  // 超过预算才裁
+  assert.equal(callEngine('x'.repeat(6000), 'Bash').reason, 'trim');
+});
+
+test('P1-3：行首 <persisted-output> 时透传', () => {
   const big = logLines(400);
   const head = callEngine(`<persisted-output>\n${big}`, 'Bash');
   assert.equal(head.reason, 'persisted');
   assert.equal(head.text, null);
+  // 换行后紧跟也算行首形态
   const embedded = callEngine(`Output too large\n<persisted-output path="x">\n${big}`, 'Bash');
   assert.equal(embedded.reason, 'persisted');
   assert.equal(callEngine(big, 'Bash').reason, 'trim');
+});
+
+test('P2-7 / v2.1：<persisted-output> 只认行首形态，正文中间出现不算', () => {
+  const big = logLines(400);
+  const inline = callEngine(`note: see <persisted-output tag> in the docs\n${big}`, 'Bash');
+  assert.equal(inline.reason, 'trim');
 });
 
 test('P1-3：<persisted-output> 在第 4000 字节之后不算', () => {
@@ -63,6 +98,14 @@ test('P1-1：Bash 文本 Exit Code 非 0 整段透传，0 仍裁剪', () => {
   assert.equal(callEngine(`${big}\nExit Code: 0`, 'Bash').reason, 'trim');
   // 非 Bash 工具不看 Exit Code
   assert.equal(callEngine(`${big}\nExit Code: 2`, 'Grep').reason, 'trim');
+});
+
+test('P2-6 / v2.1：Exit Code 只认行首形态，正文引用不触发整段透传', () => {
+  const big = logLines(400);
+  // 行首（允许前导空白）照旧算失败现场
+  assert.equal(callEngine(`  Exit Code: 1\n${big}`, 'Bash').reason, 'bash_failed');
+  // 正文引用的 "Exit Code: 1" 不是失败现场
+  assert.equal(callEngine(`note: docs say Exit Code: 1 means failure\n${big}`, 'Bash').reason, 'trim');
 });
 
 test('F6 幂等：只认行首的新品牌标记；正文裸子串与旧品牌不算', () => {
@@ -102,6 +145,13 @@ test('Read 未开裁剪且正文含行首标记 -> read_off（不是 idem）', (
   lines[100] = '\u2026 [dsh-ctx \u7701\u7565 100 \u884c\uff08\u7b2c 1\u2013100 \u884c\uff09] \u2026';
   const result = callEngine(lines.join('\n'), 'Read', { readTrim: false });
   assert.equal(result.reason, 'read_off');
+});
+
+test('Read 默认 readTrim=true：超预算源码被裁（v2.1）', () => {
+  const text = Array.from({ length: 900 }, (_, i) => `line ${i}: export function fn${i}() { return ${i}; }`).join('\n');
+  const result = callEngine(text, 'Read');
+  assert.equal(result.reason, 'trim');
+  assert.ok(result.text !== null);
 });
 
 test('异常兜底：内部抛错时返回 reason=error 且不向调用方抛出', () => {

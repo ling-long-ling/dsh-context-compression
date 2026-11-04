@@ -16,6 +16,10 @@
  * 品牌差异：2.0 标记前缀是 `… [dsh-ctx `，参考实现是 `… [wb-ops `。对拍时把
  * 输入里的新前缀换成旧前缀再喂 Python，再把 Python 输出换回新前缀再比 ——
  * 幂等判定两侧才能落在同一个「行首标记」语义上。
+ *
+ * v2.1 说明：`tests/engine/fixtures/golden.json` 已改为「自观测回归基线」，由
+ * `scripts/update-golden.mjs` 用当前 JS 引擎生成，不再是本脚本的 Python 对拍产物。
+ * 本脚本保留为开发期历史对照工具；不要再用 `--update-golden` 覆盖 v2.1 夹具。
  */
 
 import { spawnSync } from 'node:child_process';
